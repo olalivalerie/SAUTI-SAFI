@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create account | SAUTI SAFI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <a class="logo" href="index.html">
+        <span class="logo-mark">SS</span>
+        <span>SAUTI SAFI</span>
+      </a>
+      <h1 style="margin-top:28px">Create your account</h1>
+      <p>Start with the free SAUTI SAFI workspace.</p>
+      
+      <div id="message" class="message"></div>
+      
+      <form id="signupForm" class="form">
+        <label for="name">Full name</label>
+        <input id="name" type="text" required autocomplete="name">
+        
+        <label for="email">Email address</label>
+        <input id="email" type="email" required autocomplete="email">
+        
+        <label for="password">Password</label>
+        <input id="password" type="password" minlength="8" required autocomplete="new-password">
+        
+        <button id="submitBtn" class="btn btn-green" type="submit">Create account</button>
+      </form>
+      
+      <div class="form-links">
+        <span>Already have an account?</span>
+        <a href="login.html">Sign in</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("signupForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const msgContainer = document.getElementById("message");
+      const submitBtn = document.getElementById("submitBtn");
+      
+      // Get input elements explicitly
+      const nameInput = document.getElementById("name");
+      const emailInput = document.getElementById("email");
+      const passwordInput = document.getElementById("password");
+
+      // Reset message container
+      msgContainer.textContent = "";
+      msgContainer.className = "message";
+
+      // Disable button during loading
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating account...";
+
+      try {
+        const payload = {
+          name: nameInput.value.trim(),
+          email: emailInput.value.trim(),
+          password: passwordInput.value
+        };
+
+        const data = await api("/auth/register", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const successMsg = data.message || "Account created successfully.";
+        showMessage("message", successMsg + " Redirecting to sign in...", "success");
+
+        setTimeout(() => {
+          location.href = "login.html";
+        }, 1200);
+
+      } catch (err) {
+        const errorMsg = err.message || "An error occurred during registration.";
+        showMessage("message", errorMsg, "error");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create account";
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in | SAUTI SAFI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="auth-page">
+    <div class="auth-card">
+      <a class="logo" href="index.html">
+        <span class="logo-mark">SS</span>
+        <span>SAUTI SAFI</span>
+      </a>
+      <h1 style="margin-top:28px">Welcome back</h1>
+      <p>Sign in to access your monitoring workspace.</p>
+      
+      <div id="message" class="message"></div>
+      
+      <form id="loginForm" class="form">
+        <label for="email">Email address</label>
+        <input id="email" type="email" required autocomplete="email">
+        
+        <label for="password">Password</label>
+        <input id="password" type="password" required autocomplete="current-password">
+        
+        <button id="submitBtn" class="btn btn-primary" type="submit">Sign in</button>
+      </form>
+      
+      <div class="form-links">
+        <a href="forgot-password.html">Forgot password?</a>
+        <a href="signup.html">Create account</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const msgContainer = document.getElementById("message");
+      const submitBtn = document.getElementById("submitBtn");
+      
+      const emailInput = document.getElementById("email");
+      const passwordInput = document.getElementById("password");
+
+      // Reset error message state
+      msgContainer.textContent = "";
+      msgContainer.className = "message";
+
+      // Disable button while processing
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Signing in...";
+
+      try {
+        const payload = {
+          email: emailInput.value.trim(),
+          password: passwordInput.value
+        };
+
+        const data = await api("/auth/login", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // Store tokens using standard keys aligned with app.js
+        localStorage.setItem("sautiSafiToken", data.access_token);
+        localStorage.setItem("sautiSafiUser", JSON.stringify(data.user));
+
+        showMessage("message", "Login successful! Redirecting...", "success");
+
+        // Redirect to dashboard
+        setTimeout(() => {
+          window.location.href = "dashboard.html";
+        }, 500);
+
+      } catch (err) {
+        const errorMsg = err.message || "Invalid login credentials.";
+        showMessage("message", errorMsg, "error");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Sign in";
+      }
+    });
+  </script>
+</body>
+</html>

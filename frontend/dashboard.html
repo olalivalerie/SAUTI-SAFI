@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard | SAUTI SAFI</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <nav class="nav">
+    <div class="container" style="display:flex; justify-content:space-between; align-items:center; width:100%">
+      <a class="logo" href="dashboard.html">
+        <span class="logo-mark">SS</span>
+        <span>SAUTI SAFI</span>
+      </a>
+      <div class="nav-actions">
+        <a href="pricing.html" class="btn btn-secondary">Plans</a>
+        <button onclick="logout()" class="btn btn-danger">Sign out</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="dashboard">
+    <div class="container">
+      <div class="dashboard-head">
+        <div>
+          <div class="eyebrow">Monitoring workspace</div>
+          <h1 id="welcome">Dashboard</h1>
+          <p class="muted" style="font-size:11px; margin-top:5px">
+            Live data from your SAUTI SAFI backend. No simulated posts are inserted by this page.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="stat">
+          <span>Posts received</span>
+          <strong id="scanned">0</strong>
+        </div>
+        <div class="stat">
+          <span>Relevant detections</span>
+          <strong id="relevant">0</strong>
+        </div>
+        <div class="stat">
+          <span>Early warnings</span>
+          <strong id="alerts">0</strong>
+        </div>
+        <div class="stat">
+          <span>Plan</span>
+          <strong id="plan">Starter</strong>
+        </div>
+      </div>
+
+      <section class="panel" style="margin-bottom:18px">
+        <div class="panel-head">
+          <strong>Monitoring topics</strong>
+          <p>Define the X searches SAUTI SAFI should collect and analyze.</p>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 2fr auto; gap:8px; margin-bottom:10px">
+          <input id="topicName" class="input" placeholder="Topic name" maxlength="120">
+          <input id="topicQuery" class="input" placeholder='X query, e.g. Kenya OR Nairobi -is:retweet' maxlength="512">
+          <button class="btn btn-primary" onclick="addTopic()">Add topic</button>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:10px">
+          <button class="btn btn-secondary" onclick="collectNow()">Collect from X now</button>
+          <span id="collectionStatus" class="muted" style="font-size:10px"></span>
+        </div>
+        <div id="topicList" class="empty">No monitoring topics configured.</div>
+      </section>
+
+      <div class="layout">
+        <section class="panel">
+          <div class="panel-head">
+            <strong>Live detection feed</strong>
+            <p>Only records stored by the backend are shown here.</p>
+          </div>
+          <div id="feed">
+            <div class="empty">Waiting for authorized data source and stored detections.</div>
+          </div>
+        </section>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <strong>Alert center</strong>
+            <p>Highest priority stored alerts.</p>
+          </div>
+          <div id="alertList">
+            <div class="empty">No alerts yet.</div>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+  <script>
+    let pollInterval = null;
+    let loading = false;
+
+    async function loadTopics() {
+      const topics = await api("/monitoring/topics");
+      const el = document.getElementById("topicList");
+      if (!topics.length) {
+        el.innerHTML = "No monitoring topics configured.";
+        return;
+      }
+      el.className = "";
+      el.innerHTML = topics.map(t => `
+        <div style="display:flex; justify-content:space-between; gap:10px; padding:8px 0; border-top:1px solid rgba(0,0,0,.08)">
+          <div><strong>${escapeHtml(t.name)}</strong><div class="muted" style="font-size:10px">${escapeHtml(t.query)}</div></div>
+          <button class="btn btn-danger" onclick="deleteTopic(${Number(t.id)})">Remove</button>
+        </div>`).join("");
+    }
+
+    async function addTopic() {
+      const name = document.getElementById("topicName").value.trim();
+      const query = document.getElementById("topicQuery").value.trim();
+      if (!name || !query) {
+        document.getElementById("collectionStatus").textContent = "Enter both a topic name and X query.";
+        return;
+      }
+      try {
+        await api("/monitoring/topics", { method: "POST", body: JSON.stringify({ name, query }) });
+        document.getElementById("topicName").value = "";
+        document.getElementById("topicQuery").value = "";
+        document.getElementById("collectionStatus").textContent = "Topic added.";
+        await loadTopics();
+      } catch (err) {
+        document.getElementById("collectionStatus").textContent = err.message;
+      }
+    }
+
+    async function deleteTopic(id) {
+      try {
+        await api(`/monitoring/topics/${id}`, { method: "DELETE" });
+        await loadTopics();
+      } catch (err) {
+        document.getElementById("collectionStatus").textContent = err.message;
+      }
+    }
+
+    async function collectNow() {
+      const status = document.getElementById("collectionStatus");
+      status.textContent = "Collecting recent X posts...";
+      try {
+        const result = await api("/monitoring/collect", { method: "POST" });
+        const totals = result.results.reduce((a, r) => ({ fetched: a.fetched + r.fetched, inserted: a.inserted + r.inserted }), { fetched: 0, inserted: 0 });
+        status.textContent = `Fetched ${totals.fetched}; stored ${totals.inserted} new posts.`;
+        await loadDashboard();
+      } catch (err) {
+        status.textContent = err.message;
+      }
+    }
+
+    async function loadDashboard() {
+      if (loading) return;
+      loading = true;
+
+      if (!token()) {
+        window.location.href = "login.html";
+        return;
+      }
+
+      try {
+        const me = await api("/auth/me");
+        document.getElementById("welcome").textContent = `Welcome, ${me.name || "User"}`;
+        document.getElementById("plan").textContent = me.plan || "Starter";
+        await loadTopics();
+
+        const data = await api("/dashboard");
+        document.getElementById("scanned").textContent = Number(data.posts_received || 0).toLocaleString();
+        document.getElementById("relevant").textContent = Number(data.relevant_detections || 0).toLocaleString();
+        document.getElementById("alerts").textContent = Number(data.alerts || 0).toLocaleString();
+        renderPosts(data.posts || []);
+        renderAlerts(data.alert_items || []);
+      } catch (err) {
+        console.error("Dashboard error:", err);
+        if (!token()) {
+          window.location.href = "login.html";
+        } else {
+          showDashboardError(err.message);
+        }
+      } finally {
+        loading = false;
+      }
+    }
+
+    function showDashboardError(message) {
+      document.getElementById("feed").innerHTML = `<div class="empty">Unable to load dashboard data: ${escapeHtml(message)}</div>`;
+    }
+
+    function renderPosts(posts) {
+      const el = document.getElementById("feed");
+      if (!posts.length) {
+        el.innerHTML = '<div class="empty">No live detections have been stored yet.</div>';
+        return;
+      }
+
+      el.innerHTML = posts.map(p => `
+        <article class="post">
+          <div class="post-top">
+            <div class="account">
+              ${escapeHtml(p.source_name || "Authorized source")}
+              <span>${escapeHtml(p.platform || "Source")}</span>
+            </div>
+            <span class="muted" style="font-size:9px">${p.created_at ? new Date(p.created_at).toLocaleString() : ""}</span>
+          </div>
+          <div class="post-text">${escapeHtml(p.text || "")}</div>
+          <div class="badges">
+            <span class="badge">MISINFO ${Number(p.misinformation_risk ?? 0).toFixed(0)}%</span>
+            <span class="badge">HATE ${Number(p.hate_speech_risk ?? 0).toFixed(0)}%</span>
+            <span class="badge">PRIORITY ${Number(p.early_warning_priority ?? 0).toFixed(0)}</span>
+          </div>
+        </article>
+      `).join("");
+    }
+
+    function renderAlerts(alerts) {
+      const el = document.getElementById("alertList");
+      if (!alerts.length) {
+        el.innerHTML = '<div class="empty">No alerts yet.</div>';
+        return;
+      }
+
+      el.innerHTML = alerts.map(a => `
+        <div class="alert ${Number(a.priority || 0) >= 90 ? "critical" : ""}">
+          <strong>${escapeHtml(a.title || "Early warning")}</strong>
+          <p class="muted" style="font-size:10px; margin-top:5px">${escapeHtml(a.detail || "")}</p>
+          <strong style="display:block; margin-top:7px">${Number(a.priority || 0).toFixed(0)}/100</strong>
+        </div>
+      `).join("");
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    loadDashboard();
+    pollInterval = setInterval(loadDashboard, 10000);
+  </script>
+</body>
+</html>
